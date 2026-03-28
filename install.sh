@@ -45,7 +45,10 @@ IS_TERMUX=false
 IS_MACOS=false
 IS_DEBIAN=false
 
-if [[ -n "$PREFIX" && "$PREFIX" == *"com.termux"* ]]; then
+if [[ -n "$PREFIX" && ("$PREFIX" == *"com.termux"* || -f "$PREFIX/lib/libtermux.so") ]]; then
+    IS_TERMUX=true
+    info "Detected: Termux (Android)"
+elif [[ -f /proc/version ]] && grep -qi "android" /proc/version 2>/dev/null; then
     IS_TERMUX=true
     info "Detected: Termux (Android)"
 elif [[ "$(uname)" == "Darwin" ]]; then
@@ -122,9 +125,14 @@ success "pip available"
 # ── yt-dlp ────────────────────────────────────────────────────────────────────
 step "Installing yt-dlp"
 
-if command -v yt-dlp &>/dev/null; then
+# Check if yt-dlp works (not just installed)
+YT_DLP_WORKS=false
+if command -v yt-dlp &>/dev/null && yt-dlp --version &>/dev/null; then
+    YT_DLP_WORKS=true
     success "yt-dlp already installed ($(yt-dlp --version))"
-else
+fi
+
+if ! $YT_DLP_WORKS; then
     if $IS_TERMUX; then
         pkg install -y yt-dlp && success "yt-dlp installed via pkg"
     elif $IS_MACOS && command -v brew &>/dev/null; then
@@ -141,6 +149,11 @@ PIP_FLAGS=""
 # On system Python (Debian/Ubuntu 23.04+) we need --break-system-packages
 if $IS_DEBIAN && "$PYTHON" -m pip install --help 2>&1 | grep -q "break-system"; then
     PIP_FLAGS="--break-system-packages"
+fi
+
+# Termux needs native libraries for lxml
+if $IS_TERMUX; then
+    pkg install -y libxml2 libxslt
 fi
 
 "$PYTHON" -m pip install -q $PIP_FLAGS requests beautifulsoup4 lxml
