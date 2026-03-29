@@ -39,33 +39,31 @@ def _get(url, params=None, retries=3) -> Optional[requests.Response]:
 
 
 def search(query: str) -> list[dict]:
-    resp = _get(f"{BASE_URL}/search", params={"keyword": query})
-    soup = BeautifulSoup(resp.text, "lxml")
+    resp = _get(f"{BASE_URL}/browser", params={"keyword": query})
+    soup = BeautifulSoup(resp.text, "html.parser")
     results = []
 
-    for card in soup.select(".film-poster, .flw-item, .item"):
+    for card in soup.select(".aitem-wrapper .aitem, .aitem"):
         try:
-            a = card.select_one("a[href]")
-            if not a:
+            title_a = card.select_one("a.title")
+            if not title_a:
                 continue
-            href = a["href"]
-            title_el = card.select_one(".film-name, .dynamic-name, h3, .name")
-            title = title_el.get_text(strip=True) if title_el else a.get("title", "Unknown")
-            thumb_el = card.select_one("img")
-            thumb = (thumb_el.get("data-src") or thumb_el.get("src", "")) if thumb_el else ""
-            anime_id = href.rstrip("/").split("/")[-1]
-            status = ""
-            for badge in card.select(".fdi-item, .tick, .status"):
-                status = badge.get_text(strip=True)
-                break
+            href = title_a.get("href", "")
+            title = title_a.get("title", "") or title_a.get_text(strip=True)
+            poster_a = card.select_one("a.poster")
+            img = poster_a.select_one("img") if poster_a else None
+            thumb = img.get("data-src", "") if img else ""
+            anime_id = href.rstrip("/").split("/")[-1] if href else ""
+            type_badge = card.select_one(".info span b")
+            anime_type = type_badge.get_text(strip=True) if type_badge else ""
             results.append({
                 "id": anime_id,
                 "title": title,
                 "url": urljoin(BASE_URL, href),
                 "thumbnail": thumb,
-                "status": status,
-                "type": "",
+                "type": anime_type,
                 "year": "",
+                "status": "",
                 "source": "anikai",
             })
         except Exception:
@@ -75,7 +73,7 @@ def search(query: str) -> list[dict]:
 
 def get_episodes(anime_id: str) -> list[dict]:
     resp = _get(f"{BASE_URL}/{anime_id}")
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.text, "html.parser")
     episodes = []
 
     ep_list = soup.select(
@@ -119,7 +117,7 @@ def get_download_links(episode_url: str) -> list[dict]:
     Tries to detect sub/dub from button labels and data attributes.
     """
     resp = _get(episode_url)
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.text, "html.parser")
     links = []
 
     for btn in soup.select(
